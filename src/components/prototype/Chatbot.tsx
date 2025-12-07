@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { X, Send, Loader2, Bot, User } from "lucide-react";
+import { X, Send, Loader2, Bot, User, HelpCircle, MessageSquare } from "lucide-react";
 
 const API_URL = "https://ai-chat-bot-oig5.onrender.com/api/chat/";
 
@@ -18,12 +18,40 @@ const animatedTexts = [
   "24/7 Available",
 ];
 
+const quickQuestions = [
+  "How do I check if my pills are fake or real?",
+  "What are the side effects of this medication?",
+  "Can I take this medicine with food?",
+  "What's the proper dosage for adults?",
+  "How does the QR code verification work?",
+  "Is this medicine safe during pregnancy?",
+];
+
+const faqQuestions = [
+  {
+    question: "What is PharmaCheck?",
+    answer: "PharmaCheck is a QR-based authentication system that helps verify the authenticity of pharmaceutical products to prevent counterfeit medications."
+  },
+  {
+    question: "How does the QR verification work?",
+    answer: "Each product has a unique QR code under a scratch-off layer. Scan it with our app to verify authenticity and get product details."
+  },
+  {
+    question: "Is my data secure?",
+    answer: "Yes, we use end-to-end encryption and don't store personal health information. Only product verification data is processed."
+  },
+  {
+    question: "What if a code has been scanned before?",
+    answer: "Our system alerts you immediately if a code has been previously scanned, indicating potential counterfeit product."
+  }
+];
+
 const ChatbotWidget = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "welcome",
-      text: "Hello! I'm your PharmaCheck assistant. How can I help you today?",
+      text: "Hello! I'm your PharmaCheck assistant. I can help you verify medications, check side effects, and answer questions about pharmaceutical safety. How can I help you today?",
       sender: "bot",
       timestamp: new Date(),
     },
@@ -32,6 +60,8 @@ const ChatbotWidget = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [currentTextIndex, setCurrentTextIndex] = useState(0);
   const [showText, setShowText] = useState(true);
+  const [showQuickQuestions, setShowQuickQuestions] = useState(true);
+  const [showFAQ, setShowFAQ] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -69,6 +99,10 @@ const ChatbotWidget = () => {
   // Send message to API
   const sendMessage = async (text: string) => {
     if (!text.trim() || isLoading) return;
+
+    // Hide quick questions and FAQ when user sends a message
+    setShowQuickQuestions(false);
+    setShowFAQ(false);
 
     // Add user message
     const userMessage: Message = {
@@ -135,6 +169,45 @@ const ChatbotWidget = () => {
     }
   };
 
+  const handleQuickQuestion = (question: string) => {
+    sendMessage(question);
+  };
+
+  const handleFAQQuestion = (faq: { question: string; answer: string }) => {
+    // Add FAQ question as user message
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      text: faq.question,
+      sender: "user",
+      timestamp: new Date(),
+    };
+    
+    // Add FAQ answer as bot message
+    const botMessage: Message = {
+      id: (Date.now() + 1).toString(),
+      text: faq.answer,
+      sender: "bot",
+      timestamp: new Date(),
+    };
+    
+    setMessages((prev) => [...prev, userMessage, botMessage]);
+    setShowFAQ(false);
+    setShowQuickQuestions(false);
+  };
+
+  const resetChat = () => {
+    setMessages([
+      {
+        id: "welcome",
+        text: "Hello! I'm your PharmaCheck assistant. I can help you verify medications, check side effects, and answer questions about pharmaceutical safety. How can I help you today?",
+        sender: "bot",
+        timestamp: new Date(),
+      },
+    ]);
+    setShowQuickQuestions(true);
+    setShowFAQ(false);
+  };
+
   return (
     <>
       {/* Chat Window */}
@@ -154,13 +227,23 @@ const ChatbotWidget = () => {
                 </p>
               </div>
             </div>
-            <button
-              onClick={() => setIsOpen(false)}
-              className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center hover:bg-white/30 transition-colors"
-              aria-label="Close chat"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={resetChat}
+                className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center hover:bg-white/30 transition-colors text-xs font-medium"
+                aria-label="Reset chat"
+                title="Reset chat"
+              >
+                ↻
+              </button>
+              <button
+                onClick={() => setIsOpen(false)}
+                className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center hover:bg-white/30 transition-colors"
+                aria-label="Close chat"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
           </div>
 
           {/* Messages */}
@@ -202,6 +285,66 @@ const ChatbotWidget = () => {
                 </div>
               </div>
             ))}
+            
+            {/* Quick Questions - Show when only welcome message exists */}
+            {showQuickQuestions && messages.length === 1 && messages[0].id === "welcome" && !isLoading && (
+              <div className="animate-fadeInUp">
+                <div className="flex items-center gap-2 mb-3">
+                  <MessageSquare className="w-4 h-4 text-blue-500" />
+                  <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">Quick Questions:</p>
+                  <button
+                    onClick={() => setShowFAQ(!showFAQ)}
+                    className="ml-auto text-xs text-blue-500 hover:text-blue-600 dark:text-cyan-400 dark:hover:text-cyan-300 transition-colors flex items-center gap-1"
+                  >
+                    {showFAQ ? "Hide FAQ" : "Show FAQ"} <HelpCircle className="w-3 h-3" />
+                  </button>
+                </div>
+                <div className="grid gap-2 mb-4">
+                  {quickQuestions.map((question, index) => (
+                    <button
+                      key={index}
+                      onClick={() => handleQuickQuestion(question)}
+                      className="px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-sm text-left text-gray-700 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-gray-600 hover:border-blue-300 dark:hover:border-cyan-500 hover:text-blue-700 dark:hover:text-cyan-300 transition-all duration-200 hover:translate-x-1 hover:shadow-sm"
+                    >
+                      {question}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* FAQ Section */}
+            {showFAQ && !isLoading && (
+              <div className="animate-fadeInUp">
+                <div className="flex items-center gap-2 mb-3">
+                  <HelpCircle className="w-4 h-4 text-blue-500" />
+                  <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">Frequently Asked Questions:</p>
+                  <button
+                    onClick={() => setShowFAQ(false)}
+                    className="ml-auto text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 transition-colors"
+                  >
+                    Hide
+                  </button>
+                </div>
+                <div className="grid gap-3 mb-4">
+                  {faqQuestions.map((faq, index) => (
+                    <div
+                      key={index}
+                      className="bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl overflow-hidden"
+                    >
+                      <button
+                        onClick={() => handleFAQQuestion(faq)}
+                        className="w-full px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                      >
+                        <p className="text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">{faq.question}</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-2">{faq.answer}</p>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {isLoading && (
               <div className="flex gap-3 animate-fadeInUp">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center flex-shrink-0">
@@ -219,30 +362,53 @@ const ChatbotWidget = () => {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input */}
-          <div className="flex gap-3 p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 rounded-b-2xl">
-            <input
-              ref={inputRef}
-              type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Type your message..."
-              className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl text-sm bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-3 focus:ring-blue-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={isLoading}
-            />
-            <button
-              onClick={handleSubmit}
-              disabled={!inputValue.trim() || isLoading}
-              className="w-11 h-11 bg-gradient-to-br from-blue-500 to-cyan-400 rounded-xl flex items-center justify-center text-white hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none"
-              aria-label="Send message"
-            >
-              {isLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <Send className="w-5 h-5" />
-              )}
-            </button>
+          {/* Input and Actions */}
+          <div className="border-t border-gray-200 dark:border-gray-700">
+            {/* Action Buttons */}
+            {!isLoading && (
+              <div className="flex items-center gap-2 px-4 pt-3">
+                <button
+                  onClick={() => setShowQuickQuestions(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
+                >
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  Quick Questions
+                </button>
+                <button
+                  onClick={() => setShowFAQ(!showFAQ)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                  FAQ
+                </button>
+              </div>
+            )}
+            
+            {/* Input */}
+            <div className="flex gap-3 p-4">
+              <input
+                ref={inputRef}
+                type="text"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="Type your message..."
+                className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl text-sm bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-3 focus:ring-blue-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isLoading}
+              />
+              <button
+                onClick={handleSubmit}
+                disabled={!inputValue.trim() || isLoading}
+                className="w-11 h-11 bg-gradient-to-br from-blue-500 to-cyan-400 rounded-xl flex items-center justify-center text-white hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none"
+                aria-label="Send message"
+              >
+                {isLoading ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <Send className="w-5 h-5" />
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -362,11 +528,16 @@ const ChatbotWidget = () => {
           animation-delay: 0.4s;
         }
 
-        /* Mobile responsive styles using class selectors */
-        @media (max-width: 640px) {
-          /* Chat window */
+        /* Line clamp utility */
+        .line-clamp-2 {
+          overflow: hidden;
+          display: -webkit-box;
+          -webkit-box-orient: vertical;
+          -webkit-line-clamp: 2;
+        }
 
-          /* Animated text label - use a more specific selector */
+        /* Mobile responsive styles */
+        @media (max-width: 640px) {
           .fixed.bottom-\\[34px\\].right-\\[105px\\],
           .fixed[class*="bottom-\\[34px\\]"],
           .fixed[class*="right-\\[105px\\]"] {
@@ -376,7 +547,6 @@ const ChatbotWidget = () => {
             padding: 0.6rem 1rem;
           }
 
-          /* Message width on mobile */
           .max-w-\\[75\\%\\] {
             max-width: 85% !important;
           }
