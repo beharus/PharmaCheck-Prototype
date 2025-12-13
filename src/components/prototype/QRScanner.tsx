@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Button } from "../../components/ui/button";
+import { Button } from "../ui/button";
 import {
   Camera,
   QrCode,
@@ -9,9 +9,10 @@ import {
   CheckCircle2,
   X,
 } from "lucide-react";
+import { BrowserMultiFormatReader, NotFoundException } from "@zxing/library";
 
 // API Configuration
-const API_BASE_URL = "https://pharmacheck.pythonanywhere.com/api/";
+const API_BASE_URL = "https://pharmacheck.pythonanywhere.com/api";
 
 // Types
 interface Recommendation {
@@ -113,79 +114,124 @@ const QRScanner = ({ onScanComplete }: QRScannerProps) => {
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [scannedUUID, setScannedUUID] = useState<string>("");
   const [cameraError, setCameraError] = useState<string>("");
-  const [isScanningEnabled, setIsScanningEnabled] = useState<boolean>(false);
+  const [hasPermission, setHasPermission] = useState<boolean>(false);
+  const [permissionAsked, setPermissionAsked] = useState<boolean>(false);
+  const [showPermissionScreen, setShowPermissionScreen] =
+    useState<boolean>(true);
 
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const codeReader = useRef<BrowserMultiFormatReader | null>(null);
+  const isProcessingRef = useRef<boolean>(false);
+
+  // Initialize ZXing code reader
+  useEffect(() => {
+    console.log("🔧 Initializing ZXing code reader...");
+    codeReader.current = new BrowserMultiFormatReader();
+
+    return () => {
+      console.log("🧹 Cleanup: Disposing code reader...");
+      stopCamera();
+      if (codeReader.current) {
+        codeReader.current.reset();
+        codeReader.current = null;
+      }
+    };
+  }, []);
 
   // Extract UUID from various formats
   const extractUUID = (text: string): string | null => {
-    if (!text) return null;
+    console.log("🔍 Extracting UUID from text:", text);
 
-    // Remove any whitespace
+    if (!text) {
+      console.warn("⚠️ No text provided to extractUUID");
+      return null;
+    }
+
     text = text.trim();
+    console.log("📝 Trimmed text:", text);
 
-    // Check if it's already a valid UUID
     const uuidRegex =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
     if (uuidRegex.test(text)) {
+      console.log("✅ Valid UUID format detected:", text);
       return text;
     }
 
-    // Check if it contains a UUID in the path
     const pathMatch = text.match(
       /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
     );
     if (pathMatch) {
+      console.log("✅ UUID found in path:", pathMatch[0]);
       return pathMatch[0];
     }
 
-    // Check if it's a URL with UUID in it
     if (text.includes("/api/")) {
+      console.log("🔗 Detected API URL, extracting UUID...");
       const parts = text.split("/api/");
       if (parts.length > 1) {
         const uuidPart = parts[1].split("/")[0];
+        console.log("📍 UUID part extracted:", uuidPart);
         if (uuidRegex.test(uuidPart)) {
+          console.log("✅ Valid UUID from URL:", uuidPart);
           return uuidPart;
         }
       }
     }
 
+    console.error("❌ No valid UUID found in text:", text);
     return null;
   };
 
-  // Real API call function - ONLY CALLED AFTER SCANNING
+  // Real API call function
   const fetchPharmacyData = async (
     uuid: string
   ): Promise<PharmacyData | null> => {
     try {
-      console.log(`Fetching data for UUID: ${uuid}`);
+      console.log("🌐 =================================");
+      console.log("🌐 Starting API call for UUID:", uuid);
+      console.log("🌐 API Endpoint:", `${API_BASE_URL}/${uuid}/?format=json`);
+      console.log("🌐 =================================");
+
       setScanStatus("scanning");
 
       const response = await fetch(`${API_BASE_URL}/${uuid}/?format=json`);
 
+      console.log("📡 Response status:", response.status);
+      console.log("📡 Response OK:", response.ok);
+
       if (!response.ok) {
         if (response.status === 404) {
+          console.error("❌ 404 Error: Product not found in database");
           throw new Error("Product not found in database - Possibly FAKE!");
         } else if (response.status === 500) {
+          console.error("❌ 500 Error: Server error");
           throw new Error("Server error - please try again");
         }
+        console.error("❌ API Error with status:", response.status);
         throw new Error(`API Error: ${response.status}`);
       }
 
       const data: PharmacyData = await response.json();
+      console.log("✅ API Response received successfully");
+      console.log("📦 Product data:", data.pharmacy.name);
+      console.log("🔐 Is already read:", data.pharmacy.is_read);
 
-      // Check if the product was already scanned
       if (data.pharmacy.is_read) {
+        console.warn("⚠️ DUPLICATE SCAN DETECTED!");
         setScanStatus("error");
         setErrorMessage("DUPLICATE WARNING! This QR code was already scanned!");
         return null;
       }
 
+      console.log("✅ Product verification successful!");
       return data;
     } catch (error) {
-      console.error("API fetch error:", error);
+      console.error("❌ =================================");
+      console.error("❌ API fetch error:", error);
+      console.error("❌ =================================");
+
       setScanStatus("error");
       setErrorMessage(
         error instanceof Error ? error.message : "Failed to verify product"
@@ -194,207 +240,254 @@ const QRScanner = ({ onScanComplete }: QRScannerProps) => {
     }
   };
 
-  // Simulated QR code detection (for demo purposes)
-  const simulateQRDetection = (): string => {
-    // This is where real QR scanning would happen
-    // For now, we'll simulate different QR codes
-    const demoUUIDs = [
-      "4a43bbb0-68b1-413a-bcf8-b50fd0174d05", // Valid UUID
-      "http://127.0.0.1:8000/api/4a43bbb0-68b1-413a-bcf8-b50fd0174d05/", // Full URL
-      "6b2d4f8a-1c3e-4a9d-b5f7-8c9a0b1d2e3f", // Another UUID
-      "123e4567-e89b-12d3-a456-426614174000", // Yet another UUID
-    ];
-
-    return demoUUIDs[Math.floor(Math.random() * demoUUIDs.length)];
-  };
-
   // Handle detected QR code
   const handleQRDetected = (qrText: string) => {
-    console.log("QR Code detected:", qrText);
-
-    const uuid = extractUUID(qrText);
-    if (!uuid) {
-      console.error("Invalid QR code format:", qrText);
+    if (isProcessingRef.current) {
+      console.log("⚠️ Already processing a QR code, ignoring...");
       return;
     }
 
-    setScannedUUID(uuid);
-    setIsScanningEnabled(false); // Stop further scanning
+    isProcessingRef.current = true;
+    console.log("🎯 =================================");
+    console.log("🎯 QR CODE DETECTED!");
+    console.log("🎯 Raw QR text:", qrText);
+    console.log("🎯 =================================");
 
-    // Process the UUID (make API call)
+    const uuid = extractUUID(qrText);
+
+    if (!uuid) {
+      console.error("❌ Invalid QR code format");
+      setScanStatus("error");
+      setErrorMessage("Invalid QR code format. Please try again.");
+      isProcessingRef.current = false;
+      return;
+    }
+
+    console.log("✅ Valid UUID found, stopping scanner...");
+    setScannedUUID(uuid);
+    stopCamera();
+
+    console.log("🚀 Processing UUID:", uuid);
     processScannedUUID(uuid);
   };
 
-  const handleDemoFakeProduct = () => {
-    setScanStatus("scanning");
-    setErrorMessage("");
-    setScannedUUID("12345678-1234-1234-1234-123456789012"); // Non-existent UUID
-
-    setTimeout(() => {
-      setScanStatus("error");
-      setErrorMessage("Product not found in database - Possibly FAKE!");
-    }, 1000);
-  };
-  // Process the scanned UUID (make API call)
+  // Process the scanned UUID
   const processScannedUUID = async (uuid: string) => {
+    console.log("🔄 =================================");
+    console.log("🔄 Processing scanned UUID:", uuid);
+    console.log("🔄 =================================");
+
     const data = await fetchPharmacyData(uuid);
 
     if (data) {
+      console.log("✅ Product verified successfully!");
+      console.log("✅ Product name:", data.pharmacy.name);
       setScanStatus("success");
-      stopCamera();
 
-      // After showing success, navigate to details
+      console.log("⏰ Waiting 1.5 seconds before navigation...");
       setTimeout(() => {
+        console.log("🚀 Navigating to product details...");
+        isProcessingRef.current = false;
         onScanComplete(data);
       }, 1500);
     } else {
-      // Error is already handled in fetchPharmacyData
-      stopCamera();
+      console.error("❌ Product verification failed");
+      isProcessingRef.current = false;
     }
   };
 
-  // Start camera
+  // New function to check and request permission correctly
+  const requestCameraPermission = async () => {
+    try {
+      setCameraError("");
+
+      // 1. First, check the current permission state
+      const permissionStatus = await navigator.permissions.query({
+        name: "camera",
+      });
+
+      console.log("🔍 Current permission state:", permissionStatus.state);
+
+      // 2. If already denied, inform the user
+      if (permissionStatus.state === "denied") {
+        setCameraError(
+          "Camera access denied. Please allow camera permissions in your browser settings."
+        );
+        setHasPermission(false);
+        setPermissionAsked(true);
+        return;
+      }
+
+      // 3. If not denied, proceed to request via getUserMedia
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+      });
+
+      // IMPORTANT: Immediately stop tracks after permission is granted
+      stream.getTracks().forEach((track) => track.stop());
+
+      setHasPermission(true);
+      setPermissionAsked(true);
+      setShowPermissionScreen(false);
+
+      // Start camera after permission is confirmed
+      setTimeout(() => {
+        startCamera();
+      }, 300);
+    } catch (error) {
+      console.error("❌ Error requesting camera:", error);
+      handleCameraError(error);
+    }
+  };
+
+  // Modified startCamera - complete implementation
   const startCamera = async () => {
+    // Remove the hasPermission check here since we handle it in requestCameraPermission
+    if (!codeReader.current) {
+      console.log("⚠️ Code reader not initialized");
+      return;
+    }
+
     try {
       setCameraError("");
       setScanStatus("camera_active");
-      setIsScanningEnabled(true);
+      isProcessingRef.current = false;
 
+      // Directly request stream - browser will use cached permission
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: "environment", // Use back camera on mobile
+          facingMode: "environment",
           width: { ideal: 1280 },
           height: { ideal: 720 },
         },
       });
 
+      streamRef.current = stream;
+      console.log("✅ Camera stream obtained");
+
+      // Set up the video element
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        streamRef.current = stream;
+        videoRef.current.setAttribute("playsinline", "true");
 
-        // Start playing video
-        await videoRef.current.play();
+        // Wait for video to be ready
+        await new Promise<void>((resolve) => {
+          if (videoRef.current && videoRef.current.readyState >= 4) {
+            resolve();
+          } else if (videoRef.current) {
+            videoRef.current.onloadedmetadata = () => resolve();
+          }
+        });
 
-        // Start scanning simulation
-        startScanningSimulation();
+        console.log("✅ Video ready");
+        console.log(
+          "📏 Video dimensions:",
+          videoRef.current.videoWidth,
+          "x",
+          videoRef.current.videoHeight
+        );
       }
+
+      // Start ZXing QR/Barcode detection
+      console.log("🔍 Starting ZXing QR/Barcode detection...");
+      codeReader.current.decodeFromVideoDevice(
+        null,
+        videoRef.current,
+        (result, error) => {
+          if (result && !isProcessingRef.current) {
+            console.log("🎉 QR/Barcode detected by ZXing:", result.getText());
+            handleQRDetected(result.getText());
+          } else if (error && !(error instanceof NotFoundException)) {
+            console.warn("⚠️ ZXing scanning error:", error);
+          }
+        }
+      );
+
+      console.log("✅ ZXING SCANNER STARTED");
     } catch (error) {
-      console.error("Camera error:", error);
+      console.error("❌ Camera error:", error);
+      handleCameraError(error);
+    }
+  };
+  // Handle camera errors
+  const handleCameraError = (error: any) => {
+    if (error.name === "NotAllowedError" || error.name === "SecurityError") {
       setCameraError("Camera access denied. Please allow camera permissions.");
-      setScanStatus("idle");
-      setIsScanningEnabled(false);
-    }
-  };
-
-  // Simulate scanning process (in real app, this would be actual QR detection)
-// Real QR code scanning using canvas
-  const startScanningSimulation = () => {
-    if (!isScanningEnabled) return;
-
-    console.log("🎥 Camera active - Starting QR code scanning...");
-
-    // Scan every 500ms
-    const scanInterval = setInterval(() => {
-      if (!isScanningEnabled || !videoRef.current || !canvasRef.current) {
-        console.log("❌ Stopping scan interval - conditions not met");
-        clearInterval(scanInterval);
-        return;
-      }
-
-      console.log("📸 Attempting to capture frame for QR detection...");
-      scanQRFromVideo();
-    }, 500);
-
-    // Store interval ID for cleanup
-    return scanInterval;
-  };
-
-  // Scan QR code from video frame
-  const scanQRFromVideo = async () => {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-
-    if (!video || !canvas || video.readyState !== video.HAVE_ENOUGH_DATA) {
-      console.log("⏳ Video not ready yet...");
-      return;
+    } else if (
+      error.name === "NotFoundError" ||
+      error.name === "OverconstrainedError"
+    ) {
+      setCameraError("Camera not found or settings incompatible.");
+    } else {
+      setCameraError(
+        "Failed to start camera: " + (error.message || "Unknown error")
+      );
     }
 
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      console.error("❌ Could not get canvas context");
-      return;
-    }
-
-    // Set canvas size to match video
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-
-    // Draw current video frame to canvas
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    console.log(`📊 Canvas size: ${canvas.width}x${canvas.height}`);
-
-    // Get image data
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    
-    console.log("🔍 Analyzing frame for QR codes...");
-    
-    // Try to detect QR code using jsQR library
-    try {
-      // Note: jsQR needs to be imported
-      // For now, we'll use a simulated detection
-      // In production, use: const code = jsQR(imageData.data, imageData.width, imageData.height);
-      
-      // SIMULATION: Randomly detect a QR code after 3-5 seconds
-      const shouldSimulateDetection = Math.random() > 0.95; // 5% chance per scan
-      
-      if (shouldSimulateDetection) {
-        const simulatedQR = simulateQRDetection();
-        console.log("✅ QR CODE DETECTED:", simulatedQR);
-        handleQRDetected(simulatedQR);
-      } else {
-        console.log("🔍 No QR code found in this frame");
-      }
-    } catch (error) {
-      console.error("❌ Error during QR detection:", error);
-    }
-  };
-  // Manual scan trigger (for demo - in real app this would be automatic)
-  const triggerManualScan = () => {
-    if (scanStatus === "camera_active" && isScanningEnabled) {
-      const simulatedQR = simulateQRDetection();
-      handleQRDetected(simulatedQR);
-    }
+    setScanStatus("idle");
   };
 
   // Stop camera
   const stopCamera = () => {
+    console.log("🛑 Stopping camera...");
+
+    try {
+      if (codeReader.current) {
+        codeReader.current.reset();
+        console.log("✅ ZXing reader reset");
+      }
+    } catch (e) {
+      console.warn("⚠️ Error resetting ZXing reader:", e);
+    }
+
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current.getTracks().forEach((track) => {
+        track.stop();
+        console.log("⏹️ Stopped track:", track.kind);
+      });
       streamRef.current = null;
     }
+
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
-    setIsScanningEnabled(false);
+
     if (scanStatus === "camera_active") {
       setScanStatus("idle");
     }
   };
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      stopCamera();
-    };
-  }, []);
+  const handleRetry = () => {
+    console.log("🔄 Retrying scanner...");
+    stopCamera();
+    setScanStatus("idle");
+    setErrorMessage("");
+    setScannedUUID("");
+    setCameraError("");
+    isProcessingRef.current = false;
 
-  const handleStartCamera = async () => {
-    await startCamera();
+    if (!hasPermission) {
+      setShowPermissionScreen(true);
+    } else {
+      setTimeout(() => {
+        startCamera();
+      }, 500);
+    }
   };
 
-  // Demo functions (static - no actual scanning)
+  const resetScanner = () => {
+    console.log("🔄 Resetting scanner...");
+    stopCamera();
+    setScanStatus("idle");
+    setErrorMessage("");
+    setScannedUUID("");
+    setCameraError("");
+    isProcessingRef.current = false;
+  };
+
+  // Demo functions
   const handleDemoValidScan = () => {
+    console.log("🎬 DEMO: Valid Scan");
     setScanStatus("scanning");
     setErrorMessage("");
     setScannedUUID("4a43bbb0-68b1-413a-bcf8-b50fd0174d05");
@@ -408,6 +501,7 @@ const QRScanner = ({ onScanComplete }: QRScannerProps) => {
   };
 
   const handleDemoInvalidScan = () => {
+    console.log("🎬 DEMO: Invalid/Duplicate Scan");
     setScanStatus("scanning");
     setErrorMessage("");
     setScannedUUID("4a43bbb0-68b1-413a-bcf8-b50fd0174d05");
@@ -418,36 +512,40 @@ const QRScanner = ({ onScanComplete }: QRScannerProps) => {
     }, 1000);
   };
 
-  const resetScanner = () => {
-    stopCamera();
-    setScanStatus("idle");
+  const handleDemoFakeProduct = () => {
+    console.log("🎬 DEMO: Fake Product");
+    setScanStatus("scanning");
     setErrorMessage("");
-    setScannedUUID("");
-    setCameraError("");
+    setScannedUUID("12345678-1234-1234-1234-123456789012");
+
+    setTimeout(() => {
+      setScanStatus("error");
+      setErrorMessage("Product not found in database - Possibly FAKE!");
+    }, 1000);
   };
 
   return (
     <div className="max-w-md mx-auto">
       {/* Scanner Preview Area */}
       <div className="relative min-h-[500px] bg-muted rounded-2xl overflow-hidden mb-6 shadow-card">
-        {/* Camera Video Feed - Only shown when camera is active */}
+        {/* Camera Video Feed - Always present but only visible when camera is active */}
         <video
           ref={videoRef}
           autoPlay
           playsInline
           muted
           className={`absolute inset-0 w-full h-full object-cover ${
-            scanStatus === "camera_active" ? "block" : "hidden"
+            scanStatus === "camera_active" ? "opacity-100" : "opacity-0"
           }`}
         />
 
-        {/* Camera Preview Placeholder */}
+        {/* Camera Preview Placeholder - Only shows when NOT in camera_active mode */}
         <div
-          className={`absolute inset-0 ${
+          className={`absolute inset-0 flex items-center justify-center transition-opacity ${
             scanStatus === "camera_active"
-              ? "bg-transparent"
-              : "bg-gradient-to-br from-muted to-muted-foreground/10"
-          } flex items-center justify-center`}
+              ? "opacity-0 pointer-events-none" // Hidden when camera is active
+              : "opacity-100 bg-gradient-to-br from-muted to-muted-foreground/10"
+          }`}
         >
           {scanStatus === "idle" && (
             <div className="text-center">
@@ -464,8 +562,10 @@ const QRScanner = ({ onScanComplete }: QRScannerProps) => {
               )}
             </div>
           )}
+
+          {/* Show scanning/verification states over the video */}
           {scanStatus === "scanning" && (
-            <div className="text-center bg-background/90 backdrop-blur-sm rounded-xl p-6">
+            <div className="text-center bg-background/90 backdrop-blur-sm rounded-xl p-6 z-10">
               <Loader2 className="w-16 h-16 text-primary animate-spin mx-auto mb-4" />
               <p className="text-foreground font-medium">Verifying...</p>
               <p className="text-muted-foreground text-sm">
@@ -475,7 +575,7 @@ const QRScanner = ({ onScanComplete }: QRScannerProps) => {
           )}
 
           {scanStatus === "success" && (
-            <div className="text-center animate-scale-in bg-background/90 backdrop-blur-sm rounded-xl p-6">
+            <div className="text-center animate-scale-in bg-background/90 backdrop-blur-sm rounded-xl p-6 z-10">
               <div className="w-20 h-20 rounded-full bg-green-500 flex items-center justify-center mx-auto mb-4">
                 <CheckCircle2 className="w-10 h-10 text-white" />
               </div>
@@ -490,7 +590,7 @@ const QRScanner = ({ onScanComplete }: QRScannerProps) => {
           )}
 
           {scanStatus === "error" && (
-            <div className="text-center animate-scale-in px-4 bg-background/90 backdrop-blur-sm rounded-xl p-6">
+            <div className="text-center animate-scale-in px-4 bg-background/90 backdrop-blur-sm rounded-xl p-6 z-10">
               <div className="w-20 h-20 rounded-full bg-destructive flex items-center justify-center mx-auto mb-4">
                 <AlertCircle className="w-10 h-10 text-white" />
               </div>
@@ -559,9 +659,9 @@ const QRScanner = ({ onScanComplete }: QRScannerProps) => {
           )}
         </div>
 
-        {/* Scanning Frame Overlay */}
+        {/* Scanning Frame Overlay - Only shows when camera is active */}
         {scanStatus === "camera_active" && (
-          <div className="absolute inset-8 border-2 border-primary/70 rounded-xl pointer-events-none">
+          <div className="absolute inset-8 border-2 border-primary/70 rounded-xl pointer-events-none z-20">
             <div className="absolute -top-0.5 -left-0.5 w-8 h-8 border-t-4 border-l-4 border-primary rounded-tl-xl" />
             <div className="absolute -top-0.5 -right-0.5 w-8 h-8 border-t-4 border-r-4 border-primary rounded-tr-xl" />
             <div className="absolute -bottom-0.5 -left-0.5 w-8 h-8 border-b-4 border-l-4 border-primary rounded-bl-xl" />
@@ -577,11 +677,11 @@ const QRScanner = ({ onScanComplete }: QRScannerProps) => {
           </div>
         )}
 
-        {/* Camera Close Button */}
+        {/* Camera Close Button - Only shows when camera is active */}
         {scanStatus === "camera_active" && (
           <button
             onClick={stopCamera}
-            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center hover:bg-black/70 z-10"
+            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center hover:bg-black/70 z-30"
           >
             <X className="w-5 h-5 text-white" />
           </button>
@@ -683,7 +783,7 @@ const QRScanner = ({ onScanComplete }: QRScannerProps) => {
       <div className="space-y-3">
         {scanMode === "camera" && scanStatus === "idle" && (
           <Button
-            onClick={handleStartCamera}
+            onClick={requestCameraPermission} // Change from startCamera to requestCameraPermission
             className="w-full h-14 text-lg gradient-hero text-primary-foreground hover:opacity-90"
           >
             <Camera className="w-5 h-5 mr-2" />
