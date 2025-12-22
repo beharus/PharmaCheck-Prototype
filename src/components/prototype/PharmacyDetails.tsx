@@ -1,18 +1,18 @@
 import { Button } from "../ui/button";
-import { 
-  ArrowLeft, 
-  Shield, 
-  Calendar, 
-  Package, 
-  Pill, 
-  Building2, 
-  FileText, 
+import {
+  ArrowLeft,
+  Shield,
+  Calendar,
+  Package,
+  Pill,
+  Building2,
+  FileText,
   Thermometer,
   ExternalLink,
   AlertTriangle,
   CheckCircle2,
   Clock,
-  Link as LinkIcon
+  Link as LinkIcon,
 } from "lucide-react";
 import type { PharmacyData } from "../../pages/AppPrototype";
 
@@ -23,6 +23,7 @@ interface PharmacyDetailsProps {
 
 const PharmacyDetails = ({ data, onBack }: PharmacyDetailsProps) => {
   const { pharmacy, latest_block } = data;
+  console.log(data);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("en-US", {
@@ -35,7 +36,9 @@ const PharmacyDetails = ({ data, onBack }: PharmacyDetailsProps) => {
   const isExpiringSoon = () => {
     const expiryDate = new Date(pharmacy.expiryDate);
     const today = new Date();
-    const daysUntilExpiry = Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    const daysUntilExpiry = Math.ceil(
+      (expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+    );
     return daysUntilExpiry < 90;
   };
 
@@ -86,7 +89,11 @@ const PharmacyDetails = ({ data, onBack }: PharmacyDetailsProps) => {
             alt={pharmacy.name}
             className="w-full h-full object-cover"
           />
-          <div className={`absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-medium border ${getCostBadgeColor(pharmacy.cost_status)}`}>
+          <div
+            className={`absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-medium border ${getCostBadgeColor(
+              pharmacy.cost_status
+            )}`}
+          >
             {pharmacy.cost_status.toUpperCase()} COST
           </div>
         </div>
@@ -95,7 +102,9 @@ const PharmacyDetails = ({ data, onBack }: PharmacyDetailsProps) => {
         <div className="p-5">
           <div className="flex items-start justify-between mb-2">
             <div>
-              <h2 className="text-2xl font-bold text-foreground">{pharmacy.name}</h2>
+              <h2 className="text-2xl font-bold text-foreground">
+                {pharmacy.name}
+              </h2>
               <p className="text-muted-foreground">{pharmacy.brand}</p>
             </div>
             <span className="px-3 py-1 bg-primary/10 text-primary text-sm font-medium rounded-full">
@@ -123,11 +132,17 @@ const PharmacyDetails = ({ data, onBack }: PharmacyDetailsProps) => {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <p className="text-xs text-muted-foreground">Manufactured</p>
-              <p className="font-medium text-foreground">{formatDate(pharmacy.manufactureDate)}</p>
+              <p className="font-medium text-foreground">
+                {formatDate(pharmacy.manufactureDate)}
+              </p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Expires</p>
-              <p className={`font-medium ${isExpiringSoon() ? "text-destructive" : "text-foreground"}`}>
+              <p
+                className={`font-medium ${
+                  isExpiringSoon() ? "text-destructive" : "text-foreground"
+                }`}
+              >
                 {formatDate(pharmacy.expiryDate)}
                 {isExpiringSoon() && (
                   <AlertTriangle className="w-4 h-4 inline ml-1" />
@@ -146,11 +161,15 @@ const PharmacyDetails = ({ data, onBack }: PharmacyDetailsProps) => {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <p className="text-xs text-muted-foreground">Batch Number</p>
-              <p className="font-mono font-medium text-foreground">{pharmacy.batch}</p>
+              <p className="font-mono font-medium text-foreground">
+                {pharmacy.batch}
+              </p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">GTIN</p>
-              <p className="font-mono font-medium text-foreground">{pharmacy.gtin}</p>
+              <p className="font-mono font-medium text-foreground">
+                {pharmacy.gtin}
+              </p>
             </div>
           </div>
         </div>
@@ -211,7 +230,9 @@ const PharmacyDetails = ({ data, onBack }: PharmacyDetailsProps) => {
         <div className="space-y-2">
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Block Index</span>
-            <span className="font-mono text-foreground">#{latest_block.index}</span>
+            <span className="font-mono text-foreground">
+              #{latest_block.index}
+            </span>
           </div>
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Timestamp</span>
@@ -243,7 +264,11 @@ const PharmacyDetails = ({ data, onBack }: PharmacyDetailsProps) => {
               >
                 <div className="w-16 h-16 rounded-lg bg-muted overflow-hidden flex-shrink-0">
                   <img
-                    src={rec.imageExample.startsWith("/") ? `https://images.unsplash.com/photo-1587854692152-cbe660dbde88?w=100` : rec.imageExample}
+                    src={
+                      rec.imageExample.startsWith("/")
+                        ? `https://images.unsplash.com/photo-1587854692152-cbe660dbde88?w=100`
+                        : rec.imageExample
+                    }
                     alt={rec.name}
                     className="w-full h-full object-cover"
                   />
@@ -251,7 +276,11 @@ const PharmacyDetails = ({ data, onBack }: PharmacyDetailsProps) => {
                 <div className="flex-1">
                   <h4 className="font-semibold text-foreground">{rec.name}</h4>
                   <p className="text-sm text-muted-foreground">{rec.brand}</p>
-                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium mt-1 ${getCostBadgeColor(rec.cost_status)}`}>
+                  <span
+                    className={`inline-block px-2 py-0.5 rounded text-xs font-medium mt-1 ${getCostBadgeColor(
+                      rec.cost_status
+                    )}`}
+                  >
                     {rec.cost_status.toUpperCase()} COST
                   </span>
                 </div>

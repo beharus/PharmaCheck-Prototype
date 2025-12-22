@@ -523,7 +523,7 @@ const QRScanner = ({ onScanComplete }: QRScannerProps) => {
       setErrorMessage("Product not found in database - Possibly FAKE!");
     }, 1000);
   };
-
+  
   return (
     <div className="max-w-md mx-auto">
       {/* Scanner Preview Area */}
@@ -596,7 +596,7 @@ const QRScanner = ({ onScanComplete }: QRScannerProps) => {
               </div>
 
               {/* Show different message for fake product vs duplicate */}
-              {errorMessage.includes("not found") ? (
+              {errorMessage.includes("not found") || errorMessage.includes("Invalid QR code format") ? (
                 <>
                   <p className="text-destructive font-bold text-xl">
                     ⚠️ FAKE PRODUCT ALERT!
