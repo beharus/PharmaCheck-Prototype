@@ -184,7 +184,7 @@ const QRScanner = ({ onScanComplete }: QRScannerProps) => {
     return null;
   };
 
-  // Real API call function
+// Real API call function
   const fetchPharmacyData = async (
     uuid: string
   ): Promise<PharmacyData | null> => {
@@ -196,10 +196,24 @@ const QRScanner = ({ onScanComplete }: QRScannerProps) => {
 
       setScanStatus("scanning");
 
-      const response = await fetch(`${API_BASE_URL}/${uuid}/?format=json`);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+
+      const response = await fetch(`${API_BASE_URL}/${uuid}/?format=json`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        mode: 'cors',
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
 
       console.log("📡 Response status:", response.status);
       console.log("📡 Response OK:", response.ok);
+      console.log("📡 Response headers:", Object.fromEntries(response.headers.entries()));
 
       if (!response.ok) {
         if (response.status === 404) {
@@ -208,17 +222,32 @@ const QRScanner = ({ onScanComplete }: QRScannerProps) => {
         } else if (response.status === 500) {
           console.error("❌ 500 Error: Server error");
           throw new Error("Server error - please try again");
+        } else if (response.status === 0) {
+          console.error("❌ Network Error: Possible CORS issue");
+          throw new Error("Network error - check your connection");
         }
         console.error("❌ API Error with status:", response.status);
+        
+        // Try to get error message from response
+        const errorText = await response.text();
+        console.error("❌ Error response body:", errorText);
         throw new Error(`API Error: ${response.status}`);
+      }
+
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        console.error("❌ Unexpected content type:", contentType);
+        const text = await response.text();
+        console.error("❌ Response body:", text.substring(0, 200));
+        throw new Error("Invalid response format from server");
       }
 
       const data: PharmacyData = await response.json();
       console.log("✅ API Response received successfully");
-      console.log("📦 Product data:", data.pharmacy.name);
-      console.log("🔐 Is already read:", data.pharmacy.is_read);
+      console.log("📦 Product data:", data.pharmacy?.name || "Unknown");
+      console.log("🔐 Is already read:", data.pharmacy?.is_read);
 
-      if (data.pharmacy.is_read) {
+      if (data.pharmacy?.is_read) {
         console.warn("⚠️ DUPLICATE SCAN DETECTED!");
         setScanStatus("error");
         setErrorMessage("DUPLICATE WARNING! This QR code was already scanned!");
@@ -230,12 +259,24 @@ const QRScanner = ({ onScanComplete }: QRScannerProps) => {
     } catch (error) {
       console.error("❌ =================================");
       console.error("❌ API fetch error:", error);
+      console.error("❌ Error type:", error instanceof Error ? error.name : typeof error);
       console.error("❌ =================================");
 
       setScanStatus("error");
-      setErrorMessage(
-        error instanceof Error ? error.message : "Failed to verify product"
-      );
+      
+      // Better error messages
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          setErrorMessage("Request timeout - please try again");
+        } else if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
+          setErrorMessage("Network error - check your internet connection or CORS settings");
+        } else {
+          setErrorMessage(error.message);
+        }
+      } else {
+        setErrorMessage("Failed to verify product - unknown error");
+      }
+      
       return null;
     }
   };
